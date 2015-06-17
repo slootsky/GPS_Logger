@@ -34,11 +34,11 @@ float seaLevelPressure = 101.325;
 #define ACCEL_THRESHOLD  10.0
 #define ACCEL_DELTA_THRESHOLD  0.95    // 25%
 #define SPEED_DELTA_THRESHOLD  0.10    // 10%
-#define THRESHOLD_METRES       500     // metres
+#define THRESHOLD_METRES       500.0     // metres
 #define SERIAL_OUTPUT
 // #define EXPLAIN_OUTPUT
 #define RUN_FLAG_OUTPUT
-//#define WRITE_CSV_HEADER
+#define CSV_HEADER_OUTPUT
 #define LED_INDICATORS
 
 #include <SPI.h>
@@ -119,8 +119,8 @@ struct all_the_data {
   float aggregate_accel, aggregate_mag, aggregate_gyro;
 };
 
-all_the_data  g_sensor_data, g_last_sensor_data;
-char g_runFlags[3];
+all_the_data  g_sensor_data, g_last_sensor_data, g_last_logged_sensor_data;
+char g_runFlags[4];
 
 TinyGPS gps;
 
@@ -409,7 +409,7 @@ void take_readings()
 
   #ifdef USE_BMP_SENSOR
     sensors_event_t bmp_event;
-    float temperature;
+//    float temperature;
 
     /* Calculate the altitude using the barometric pressure sensor */
     bmp.getEvent(&g_sensor_data.bmp_event);
@@ -428,22 +428,23 @@ void write_csv_header()
 #ifdef RUN_FLAG_OUTPUT
   print_str("RunFlags,");
 #endif  
-  print_str("Date,Time");
-  print_str(",Latitude,Longitude");
+#ifdef EXPLAIN_OUTPUT
+  print_str("course_hdr,");
+#endif
+  print_str("Course");
+  print_str(",Speed");
+  print_str(",HDOP,Satellites");
+  print_str(",Latitude");
+  print_str(",dt_age,Date,Time");
 #ifdef EXPLAIN_OUTPUT
   print_str(",alt_hdr");
 #endif
   print_str(",Altitude");
 #ifdef EXPLAIN_OUTPUT
-  print_str(",course_hdr");
-#endif
-  print_str(",Course");
-  print_str(",Speed");
-  print_str(",HDOP,Satellites");
-#ifdef EXPLAIN_OUTPUT
   print_str(",accel_hdr",10);
 #endif  
   print_str(",accel_x,accel_y,accel_z");
+  print_str(",Longitude");
 #ifdef EXPLAIN_OUTPUT
   print_str(",mag_hdr",10);
 #endif  
@@ -477,21 +478,12 @@ void write_csv_header()
 void log_output_forced(bool take_reading = true)
 {
   if (take_reading) take_readings();
+  g_last_logged_sensor_data = g_sensor_data;
+  
 #ifdef RUN_FLAG_OUTPUT
   print_str(g_runFlags);
   print_str(",");
 #endif  
-  print_date(gps);
-  print_str(",");
-  print_float(g_sensor_data.latitude, 1000.0 /*TinyGPS::GPS_INVALID_ANGLE*/, 11, 6);
-  print_str(",");
-  print_float(g_sensor_data.longitude, 1000.0 /*TinyGPS::GPS_INVALID_ANGLE*/, 11, 6);
-  print_str(",");
-#ifdef EXPLAIN_OUTPUT
-  print_str("alt,");
-#endif  
-  print_ulong(g_sensor_data.altitude, 1000 /*TinyGPS::GPS_INVALID_ALTITUDE*/, 5);
-  print_str(",");
 #ifdef EXPLAIN_OUTPUT
   print_str("course,");
 #endif  
@@ -505,8 +497,18 @@ void log_output_forced(bool take_reading = true)
   print_ulong(g_sensor_data.hdop, TinyGPS::GPS_INVALID_HDOP, 5);
   print_str(",");
   print_int(g_sensor_data.satellites, TinyGPS::GPS_INVALID_SATELLITES, 2);
-#ifdef  USE_10DOF_SENSOR
   print_str(",");
+
+  print_float(g_sensor_data.latitude, 1000.0 /*TinyGPS::GPS_INVALID_ANGLE*/, 11, 6);
+  print_str(",");
+  print_date(gps);
+  print_str(",");
+#ifdef EXPLAIN_OUTPUT
+  print_str("alt,");
+#endif  
+  print_ulong(g_sensor_data.altitude, 1000 /*TinyGPS::GPS_INVALID_ALTITUDE*/, 5);
+  print_str(",");
+#ifdef  USE_10DOF_SENSOR
 #ifdef EXPLAIN_OUTPUT
   print_str("accel_xyz,");
 #endif  
@@ -515,6 +517,8 @@ void log_output_forced(bool take_reading = true)
   print_float(g_sensor_data.accel_event.acceleration.y, TinyGPS::GPS_INVALID_ANGLE, 7, 2);
   print_str(",");
   print_float(g_sensor_data.accel_event.acceleration.z, TinyGPS::GPS_INVALID_ANGLE, 7, 2);
+  print_str(",");
+  print_float(g_sensor_data.longitude, 1000.0 /*TinyGPS::GPS_INVALID_ANGLE*/, 11, 6);
   print_str(",");
 #ifdef EXPLAIN_OUTPUT
   print_str("mag_xyz,");
@@ -591,6 +595,7 @@ void log_output()
     && (abs(g_sensor_data.aggregate_accel-g_last_sensor_data.aggregate_accel)/g_sensor_data.aggregate_accel > ACCEL_DELTA_THRESHOLD )
     )
     {
+#ifdef SERIAL_OUTPUT
       Serial.print("logging because accel delta threshold  abs(g_sensor_data.aggregate_accel(");
 
       Serial.print(g_sensor_data.aggregate_accel);
@@ -600,14 +605,39 @@ void log_output()
       Serial.print(g_sensor_data.aggregate_accel);
       Serial.print(" ) = ");
       Serial.println( abs(g_sensor_data.aggregate_accel-g_last_sensor_data.aggregate_accel)/g_sensor_data.aggregate_accel );
+#endif      
 
       do_log_output=true;
+	  g_runFlags[(g_runFlags[1]?2:1)] = 'A';
+
     }
-  else if ( TinyGPS::distance_between(g_sensor_data.latitude, g_sensor_data.longitude, g_last_sensor_data.latitude, g_last_sensor_data.longitude) > THRESHOLD_METRES )
-  {
-    Serial.println("logging because distance travelled > THRESHOLD_METRES");
-    do_log_output = true;
+/*
+There is something very very awkward about the distance_between math.  I suspect it doesn't work worth a damn for very small values.  So I'm putting a 20,000 limit on the distance
+*/
+  else {
+    float distance_between = TinyGPS::distance_between(g_sensor_data.latitude, g_sensor_data.longitude, g_last_logged_sensor_data.latitude, g_last_logged_sensor_data.longitude);
+      if ( distance_between < 20000 && distance_between > THRESHOLD_METRES )
+      {
+#ifdef SERIAL_OUTPUT
+        Serial.print("logging because distance travelled (");
+        Serial.print(distance_between);
+        Serial.println(") > THRESHOLD_METRES");
+        Serial.print("Current : (");
+        Serial.print(g_sensor_data.latitude);
+        Serial.print(",");
+        Serial.print(g_sensor_data.longitude);
+        Serial.println(")");
+        Serial.print("Logged  : (");
+        Serial.print(g_last_logged_sensor_data.latitude);
+        Serial.print(",");
+        Serial.print(g_last_logged_sensor_data.longitude);
+        Serial.println(")");
+#endif        
+        do_log_output = true;
+    	g_runFlags[(g_runFlags[1]?2:1)] = 'D';
+      }
   }
+
 //  else if ( g_sensor_data.last_position_fix !=  TinyGPS::GPS_INVALID_FIX_TIME
 //       && g_sensor_data.last_position_fix > g_last_sensor_data.last_position_fix
 //     ) // we've gotten a valid reading since the last one
@@ -632,6 +662,7 @@ void setup() {
   g_runFlags[0] = 0;
   g_runFlags[1] = 0;
   g_runFlags[2] = 0;
+  g_runFlags[3] = 0;
 
   Serial.begin(57600);
   Serial.print("Using TinyGPS library v. "); Serial.println(TinyGPS::library_version());
@@ -738,19 +769,21 @@ void setup() {
   start_gps();
 
   read_gps_buffer();
-#ifdef WRITE_CSV_HEADER  
+#ifdef CSV_HEADER_OUTPUT  
   write_csv_header();
-#endif  
   read_gps_buffer();
+#endif  
   log_output_forced();
 }
 
 void loop()
 {
   bool delay_loop = false;
-  g_runFlags[0]=0;
-  g_runFlags[1]=0;
-  g_runFlags[2]=0;
+  g_runFlags[0] = 0;
+  g_runFlags[1] = 0;
+  g_runFlags[2] = 0;
+  g_runFlags[3] = 0;
+
   read_gyro();
   take_readings();
   bool moving = calculate_moving();
