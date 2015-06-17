@@ -6,6 +6,7 @@
 
 #define USE_MAG_SENSOR
 #define USE_ACCEL_SENSOR
+#define GPSECHO
 
 #ifdef USE_MAG_SENSOR || USE_ACCEL_SENSOR
 #include <Wire.h>
@@ -32,6 +33,8 @@ Adafruit_LSM303_Mag_Unified mag = Adafruit_LSM303_Mag_Unified(12345);
 
 TinyGPS gps;
 SoftwareSerial ss(8, 7);
+char filename[15];
+
 File logfile;
 
 
@@ -69,10 +72,9 @@ void setup()
   // see if the card is present and can be initialized:
   if (!SD.begin(chipSelect, 11, 12, 13)) {
     //if (!SD.begin(chipSelect)) {      // if you're using an UNO, you can use this line instead
-    Serial.println("Card init. failed!");
+    Serial.println(F("Card init. failed!"));
     error(2);
   }
-  char filename[15];
   strcpy(filename, "GPSLOG00.TXT");
   for (uint8_t i = 0; i < 100; i++) {
     filename[6] = '0' + i/10;
@@ -100,7 +102,17 @@ void setup()
   serial_and_log_println(F("          (deg)     (deg)      Age                      Age  (m)    --- from GPS ----  ---- to London  ----  RX    RX        Fail"));
   serial_and_log_println(F("-------------------------------------------------------------------------------------------------------------------------------------"));
 
+  logfile.close();
   ss.begin(9600);
+}
+void openLogfile()
+{
+    logfile = SD.open(filename, FILE_WRITE);
+  if( ! logfile ) {
+    Serial.print(F("Couldn't create ")); 
+    Serial.println(filename);
+    error(3);
+  }
 }
 
 void loop()
@@ -108,8 +120,10 @@ void loop()
   float flat, flon;
   unsigned long age, date, time, chars = 0;
   unsigned short sentences = 0, failed = 0;
-  static const double LONDON_LAT = 51.508131, LONDON_LON = -0.128002;
-  
+//  static const double LONDON_LAT = 51.508131, LONDON_LON = -0.128002;
+
+  openLogfile();  
+
   print_int(gps.satellites(), TinyGPS::GPS_INVALID_SATELLITES, 5);
   print_int(gps.hdop(), TinyGPS::GPS_INVALID_HDOP, 5);
   gps.f_get_position(&flat, &flon, &age);
@@ -121,17 +135,20 @@ void loop()
   print_float(gps.f_course(), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
   print_float(gps.f_speed_kmph(), TinyGPS::GPS_INVALID_F_SPEED, 6, 2);
   print_str(gps.f_course() == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(gps.f_course()), 6);
-  print_int(flat == TinyGPS::GPS_INVALID_F_ANGLE ? 0xFFFFFFFF : (unsigned long)TinyGPS::distance_between(flat, flon, LONDON_LAT, LONDON_LON) / 1000, 0xFFFFFFFF, 9);
-  print_float(flat == TinyGPS::GPS_INVALID_F_ANGLE ? TinyGPS::GPS_INVALID_F_ANGLE : TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
-  print_str(flat == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON)), 6);
+//  print_int(flat == TinyGPS::GPS_INVALID_F_ANGLE ? 0xFFFFFFFF : (unsigned long)TinyGPS::distance_between(flat, flon, LONDON_LAT, LONDON_LON) / 1000, 0xFFFFFFFF, 9);
+//  print_float(flat == TinyGPS::GPS_INVALID_F_ANGLE ? TinyGPS::GPS_INVALID_F_ANGLE : TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
+//  print_str(flat == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON)), 6);
 
+#ifndef _GPS_NO_STATS
   gps.stats(&chars, &sentences, &failed);
   print_int(chars, 0xFFFFFFFF, 6);
   print_int(sentences, 0xFFFFFFFF, 10);
   print_int(failed, 0xFFFFFFFF, 9);
+#endif  
   serial_and_log_println();
   
-  logfile.flush();
+//  logfile.flush();
+  logfile.close();
   smartdelay(1000);
 }
 
@@ -141,7 +158,13 @@ static void smartdelay(unsigned long ms)
   do 
   {
     while (ss.available())
-      gps.encode(ss.read());
+    {
+      char c = ss.read();
+      gps.encode(c);
+      #ifdef GPSECHO
+      Serial.print(c);
+      #endif
+    }
   } while (millis() - start < ms);
 }
 
@@ -187,7 +210,8 @@ static void print_date(TinyGPS &gps)
   byte month, day, hour, minute, second, hundredths;
   unsigned long age;
   gps.crack_datetime(&year, &month, &day, &hour, &minute, &second, &hundredths, &age);
-  if (age == TinyGPS::GPS_INVALID_AGE)
+//  if (age == TinyGPS::GPS_INVALID_AGE)
+  if (year == 2000)
     serial_and_log_print(F("********** ******** "));
   else
   {
