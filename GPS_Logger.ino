@@ -1,10 +1,27 @@
-// #define noF  F
+#include <TinyGPS.h>
+
+// GPS commands come from http://www.adafruit.com/datasheets/PMTK_A11.pdf
+
+#define PAUSE_DURATION  180000  // 3 minutes
+
+enum MOVING_STATE { MOVING, PAUSED, STOPPED };
+MOVING_STATE moving_state;
+
+
+// Configuration for MEGA
+#define GPS_ENABLE_PIN 7
+#define RED_LED 4
+#define YELLOW_LED 3
+#define GREEN_LED 2
+#define BLUE_LED 5
+#define gpsSerial  Serial1
+
+
 float seaLevelPressure = 101.325;
 
 #define SERIAL_OUTPUT
 #define EXPLAIN_OUTPUT
-
-#define GPS_ENABLE  7
+#define LED_INDICATORS
 
 #include <SPI.h>
 
@@ -18,11 +35,11 @@ float seaLevelPressure = 101.325;
   
   File logfile;
 #endif  
+
 #ifdef SD_LOGGER
   #define logfile Serial2
 #endif
 
-#include <TinyGPS.h>
 
 #define USE_10DOF_SENSOR
 #define USE_BMP_SENSOR
@@ -55,138 +72,76 @@ float seaLevelPressure = 101.325;
 
 TinyGPS gps;
 
-//  HardwareSerial &gpsSerial = Serial;
-  #define gpsSerial  Serial1
-
-char filename[15];
 
 
-static void smartdelay(unsigned long ms);
-static void print_float(float val, float invalid, int len, int prec);
-static void print_int(unsigned long val, unsigned long invalid, int len);
-static void print_date(TinyGPS &gps);
-static void print_str(const char *str, int len);
+// need some millis helper functions
 
-#ifdef DISPLAY_SENSOR_DETAILS
-  void displaySensorDetails(void);
-#endif
-
-void error(uint8_t errno);
-
-void serial_and_log_print(char);
-void serial_and_log_println(char);
-void serial_and_log_print(char*s = 0);
-void serial_and_log_println(char *s = 0);
-void serial_and_log_print(const __FlashStringHelper* s);
-void serial_and_log_println(const __FlashStringHelper* s);
-void serial_and_log_print(float &f, int& i);
-void serial_and_log_println(float &f, int& i);
-
-void setup()
+inline bool has_millis_passed(unsigned long since_millis, unsigned long milli_duration)
 {
-  Serial.begin(57600);
-  Serial.print("Using TinyGPS library v. "); Serial.println(TinyGPS::library_version());
-
-  Serial.println("by Mikal Hart");
-  Serial.println();
-
-  pinMode(GPS_ENABLE, INPUT);
-  pinMode(2, OUTPUT);
-  pinMode(3, OUTPUT);
-  pinMode(4, OUTPUT);
-  pinMode(5, OUTPUT);
-  pinMode(ledPin, OUTPUT);
-
-  // make sure that the default chip select pin is set to
-  // output, even if you don't use it:
-  pinMode(10, OUTPUT);
-
-  #ifdef DIRECT_SD
-    // see if the card is present and can be initialized:
-    if (!SD.begin(chipSelect, 11, 12, 13)) {
-      #ifdef SERIAL_OUTPUT
-        //if (!SD.begin(chipSelect)) {      // if you're using an UNO, you can use this line instead
-        Serial.println("Card init. failed!");
-      #endif
-      error(2);
-    }
-    strcpy(filename, "GPSLOG00.TXT");
-    for (uint8_t i = 0; i < 100; i++) {
-      filename[6] = '0' + i/10;
-      filename[7] = '0' + i%10;
-      // create if does not exist, do not open existing, write, sync after write
-      if (! SD.exists(filename)) {
-        break;
-      }
-    }
-  
-    openLogfile();
-  #endif
-
-    Serial.print("Writing to "); 
-    Serial.println(filename);
-
-   logfile.print("Using TinyGPS library v. "); logfile.println(TinyGPS::library_version());
-#ifdef SD_LOGGER
- smartdelay(15);
- logfile.begin(9600);
-#endif   
-//  logfile.println("by Mikal Hart");
-  logfile.println();
-
-  #ifdef USE_10DOF_SENSOR
-    /* Initialise the sensor */
-    if(!mag.begin())
-    {
-      /* There was a problem detecting the LSM303 ... check your connections */
-      serial_and_log_println("no LSM303 detected");
-      while(1);
-    }
-  
-    /* Initialise the sensor */
-    if(!accel.begin())
-    {
-      /* There was a problem detecting the ADXL345 ... check your connections */
-      serial_and_log_println("no LSM303 detected");
-      while(1);
-    }
-  #endif
-
-  #ifdef USE_BMP_SENSOR
-    if(!bmp.begin())
-    {
-      /* There was a problem detecting the BMP180 ... check your connections */
-      #ifdef SERIAL_OUTPUT
-        Serial.println("no BMP180 detected");
-      #endif
-      while(1);
-    }
-  #endif
-  
-  #ifdef DISPLAY_SENSOR_DETAILS
-    displaySensorDetails();
-  #endif  
-  
-//  serial_and_log_println("Sats HDOP Latitude  Longitude  Fix  Date       Time     Date Alt    Course Speed Card  heading  pitch    roll    accel                 pressure temp  ");
-  serial_and_log_print("Sats,HDOP,Latitude,Longitude,FixAge,Date,Time,Alt,Course,Speed,Card");
-#ifdef USE_10DOF_SENSOR
-  serial_and_log_print(",heading,pitch,roll,accel_x,accel_y,accel_z");
-#endif
-#ifdef USE_BMP_SENSOR  
-  serial_and_log_print(",pressure,temp");
-#endif  
-  #ifndef _GPS_NO_STATS
-    serial_and_log_print(",stats_chars,stats_sentences,stats_failed");
-#endif  
-    serial_and_log_println("");
-//  serial_and_log_println("          (deg)     (deg)      Age                      Age  (m)    --- from GPS ----    deg     deg     deg      x        y     z                 C  ");
-//  serial_and_log_println("------------------------------------------------------------------------------------------------------------------------------------------------------");
-
-  #ifdef DIRECT_SD
-    logfile.close();
-  #endif
-  gpsSerial.begin(9600);
+	return ( millis()-since_millis > milli_duration );
 }
+
+void stop_gps()
+{
+	// Hot Restart: Use all available data in the NV Store
+	gps_write("$PMTK101");
+
+	// Enter standby mode for power saving. 
+	gps_write("$PMTK161,0");
+	// ground out GPS_ENABLE_PIN
+	pinMode(GPS_ENABLE_PIN, OUTPUT);
+	digitalWrite(GPS_ENABLE_PIN,LOW);
+}
+
+void start_gps()
+{
+	// set this to INPUT to let it float (ie: not Ground)
+	pinMode(GPS_ENABLE_PIN, INPUT);
+	
+	// Warm Restart: Don't use Ephemeris at re-start
+	gps_write("PMTK102");
+}
+
+char *byte_to_hex(byte number)
+{
+  static char retval[3] = {0,0,0};
+  if (number > 255) return NULL;
+  // first break the digits out into numerical values
+  retval[1] = number%16;
+  retval[0] = (number-retval[2]) / 16;
+  // convert numbers to ascii hex values
+  for ( int i = 0 ; i++ ; i< 2 ) // yes, a loop of two
+  {
+    retval[i] = ( retval[i] <= 9 ? '0'+retval[i] : 'A'+retval[i]-9);
+  }
+  return retval;
+}
+
+void gps_write(char *cmd_string)
+{
+	char checksum_str[3];
+	byte checksum = 0;
+	char *cmd_char;
+	
+	// if there is already a $ at the beginning of the command, skip it
+	cmd_char = cmd_string;
+	if (*cmd_char == '$') cmd_char++;
+	
+	while ( *cmd_char )
+	{
+		checksum ^= *cmd_char ;  // (xor)
+	}
+	
+	cmd_char = cmd_string;
+	if (*cmd_char == '$') cmd_char++;
+	
+	gpsSerial.print("$");
+	gpsSerial.print(cmd_char);
+	gpsSerial.print("*");
+	gpsSerial.print(byte_to_hex(checksum));
+	gpsSerial.print("\r\n");
+}
+
 
 #ifdef DIRECT_SD
   void openLogfile()
@@ -202,143 +157,8 @@ void setup()
   }
 #endif
 
-void loop()
+static void read_from_gps()
 {
-  float flat, flon;
-  unsigned long age, date, time, chars = 0;
-
-  #ifndef _GPS_NO_STATS  
-    unsigned short sentences = 0, failed = 0;
-  #endif  
-//  static const double LONDON_LAT = 51.508131, LONDON_LON = -0.128002;
-
-  #ifdef USE_BMP_SENSOR
-    sensors_event_t bmp_event;
-    float temperature;
-
-    /* Calculate the altitude using the barometric pressure sensor */
-    bmp.getEvent(&bmp_event);
-    if (bmp_event.pressure)
-    {
-      /* Get ambient temperature in Celcius */
-      bmp.getTemperature(&temperature);
-    }
-  #endif
-
-  #ifdef USE_10DOF_SENSOR
-    float pitch, roll, heading;
-  
-    sensors_event_t accel_event;
-    sensors_event_t mag_event;
-    sensors_vec_t   orientation;
-  
-  
-    mag.getEvent(&mag_event);
-    accel.getEvent(&accel_event);
-    if (!dof.fusionGetOrientation(&accel_event, &mag_event, &orientation))
-    {
-      orientation.heading = -1.0;
-      orientation.roll = -1.0;
-      orientation.pitch = -1.0;
-    }
-  #endif  
-  
-
-  #ifdef DIRECT_SD
-    openLogfile();  
-  #endif  
-
-  print_int(gps.satellites(), TinyGPS::GPS_INVALID_SATELLITES, 5);
-  print_str(",",1);
-  print_int(gps.hdop(), TinyGPS::GPS_INVALID_HDOP, 5);
-  gps.f_get_position(&flat, &flon, &age);
-  print_str(",",1);
-  print_float(flat, TinyGPS::GPS_INVALID_F_ANGLE, 10, 6);
-  print_str(",",1);
-  print_float(flon, TinyGPS::GPS_INVALID_F_ANGLE, 11, 6);
-  print_str(",",1);
-  print_int(age, TinyGPS::GPS_INVALID_AGE, 5);
-  print_str(",",1);
-  print_date(gps);
-  print_str(",",1);
-#ifdef EXPLAIN_OUTPUT
-  print_str("Alt:",4);
-#endif
-  print_float(gps.f_altitude(), TinyGPS::GPS_INVALID_F_ALTITUDE, 7, 2);
-  print_str(",",1);
-  print_float(gps.f_course(), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
-  print_str(",",1);
-#ifdef EXPLAIN_OUTPUT
-  print_str("Speed:",6);
-#endif
-  print_float(gps.f_speed_kmph(), TinyGPS::GPS_INVALID_F_SPEED, 6, 2);
-  print_str(",",1);
-  print_str(gps.f_course() == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(gps.f_course()), 6);
-  print_str(",",1);
-//  print_int(flat == TinyGPS::GPS_INVALID_F_ANGLE ? 0xFFFFFFFF : (unsigned long)TinyGPS::distance_between(flat, flon, LONDON_LAT, LONDON_LON) / 1000, 0xFFFFFFFF, 9);
-//  print_float(flat == TinyGPS::GPS_INVALID_F_ANGLE ? TinyGPS::GPS_INVALID_F_ANGLE : TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
-//  print_str(flat == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON)), 6);
-
-#ifdef EXPLAIN_OUTPUT
-  print_str("heading/pitch/roll ",19);
-#endif  
-   print_float(orientation.heading,-1,9,3);
-  print_str(",",1);
-   print_float(orientation.pitch,-1,9,3);
-  print_str(",",1);
-   print_float(orientation.roll,-1,9,3);
-  print_str(",",1);
-
-#ifdef EXPLAIN_OUTPUT
-  print_str("accel xyz ",10);
-#endif  
-   print_float(accel_event.acceleration.x,-1,9,3);
-  print_str(",",1);
-   print_float(accel_event.acceleration.y,-1,9,3);
-  print_str(",",1);
-   print_float(accel_event.acceleration.z,-1,9,3);
-  print_str(",",1);
-  #ifdef USE_BMP_SENSOR  
-    /* Calculate the altitude using the barometric pressure sensor */
-      /* Convert atmospheric pressure, SLP and temp to altitude    */
-  
-      print_float(bmp.pressureToAltitude(SENSORS_PRESSURE_SEALEVELHPA,
-                                          bmp_event.pressure
-                                          //,temperature
-                                          ),-1,6,2); 
-      print_str(" m,",3);
-      /* Display the temperature */
-      print_float(temperature,-1,6,2);
-      print_str(" C,",3);
-  #endif
-   
-
-  #ifndef _GPS_NO_STATS
-    gps.stats(&chars, &sentences, &failed);
-    print_int(chars, 0xFFFFFFFF, 6);
-  print_str(",",1);
-    print_int(sentences, 0xFFFFFFFF, 10);
-  print_str(",",1);
-    print_int(failed, 0xFFFFFFFF, 9);
-  #endif  
-
-  serial_and_log_println("");
-
-  #ifdef DIRECT_SD
-  //  logfile.flush();
-    logfile.close();
-  #else
-    logfile.flush();
-  #endif
-  
-  smartdelay(LOOP_DELAY);
-}
-
-static void smartdelay(unsigned long ms)
-{
-  unsigned long start = millis();
-  do 
-  {
     while (gpsSerial.available())
     {
       char c = gpsSerial.read();
@@ -347,6 +167,14 @@ static void smartdelay(unsigned long ms)
         Serial.print(c);
       #endif
     }
+}
+
+static void smartdelay(unsigned long ms)
+{
+  unsigned long start = millis();
+  do 
+  {
+    read_from_gps();    
   } while (millis() - start < ms);
 }
 
@@ -367,7 +195,7 @@ static void print_float(float val, float invalid, int len, int prec)
     for (int i=flen; i<len; ++i)
       serial_and_log_print(' ');
   }
-  smartdelay(0);
+  read_from_gps();
 }
 
 static void print_int(unsigned long val, unsigned long invalid, int len)
@@ -383,7 +211,7 @@ static void print_int(unsigned long val, unsigned long invalid, int len)
   if (len > 0) 
     sz[len-1] = ' ';
   serial_and_log_print(sz);
-  smartdelay(0);
+  read_from_gps();
 }
 
 static void print_date(TinyGPS &gps)
@@ -405,7 +233,7 @@ static void print_date(TinyGPS &gps)
     serial_and_log_print(sz);
   }
   print_int(age, TinyGPS::GPS_INVALID_AGE, 5);
-  smartdelay(0);
+  read_from_gps();
 }
 
 static void print_str(const char *str, int len)
@@ -415,7 +243,7 @@ static void print_str(const char *str, int len)
   {
     serial_and_log_print(i<slen ? str[i] : ' ');
   }
-  smartdelay(0);
+  read_from_gps();
 }
 
 // blink out an error code
@@ -551,4 +379,183 @@ void serial_and_log_println(float &f, int& i)
 #endif   
 }
 
+
+
+void setup() {
+  Serial.begin(57600);
+  Serial.print("Using TinyGPS library v. "); Serial.println(TinyGPS::library_version());
+
+  Serial.println("by Mikal Hart");
+  Serial.println();
+
+  pinMode(ledPin, OUTPUT);
+  pinMode(RED_LED,OUTPUT);
+  pinMode(YELLOW_LED,OUTPUT);
+  pinMode(GREEN_LED,OUTPUT);
+  pinMode(BLUE_LED,OUTPUT);
+
+  // make sure that the default chip select pin is set to
+  // output, even if you don't use it:
+  pinMode(10, OUTPUT);
+
+  #ifdef DIRECT_SD
+    // see if the card is present and can be initialized:
+    if (!SD.begin(chipSelect, 11, 12, 13)) {
+      #ifdef SERIAL_OUTPUT
+        //if (!SD.begin(chipSelect)) {      // if you're using an UNO, you can use this line instead
+        Serial.println("Card init. failed!");
+      #endif
+      error(2);
+    }
+    strcpy(filename, "GPSLOG00.TXT");
+    for (uint8_t i = 0; i < 100; i++) {
+      filename[6] = '0' + i/10;
+      filename[7] = '0' + i%10;
+      // create if does not exist, do not open existing, write, sync after write
+      if (! SD.exists(filename))
+        break;
+    }
+  
+    openLogfile();
+
+    Serial.print("Writing to "); 
+    Serial.println(filename);
+
+  #endif
+
+
+   logfile.print("Using TinyGPS library v. "); logfile.println(TinyGPS::library_version());
+#ifdef SD_LOGGER
+ smartdelay(15);
+ logfile.begin(9600);
+#endif   
+//  logfile.println("by Mikal Hart");
+  logfile.println();
+
+  #ifdef USE_10DOF_SENSOR
+    /* Initialise the sensor */
+    if(!mag.begin())
+    {
+      /* There was a problem detecting the LSM303 ... check your connections */
+      serial_and_log_println("no LSM303 detected");
+      while(1);
+    }
+  
+    /* Initialise the sensor */
+    if(!accel.begin())
+    {
+      /* There was a problem detecting the ADXL345 ... check your connections */
+      serial_and_log_println("no LSM303 detected");
+      while(1);
+    }
+  #endif
+
+  #ifdef USE_BMP_SENSOR
+    if(!bmp.begin())
+    {
+      /* There was a problem detecting the BMP180 ... check your connections */
+      #ifdef SERIAL_OUTPUT
+        Serial.println("no BMP180 detected");
+      #endif
+      while(1);
+    }
+  #endif
+  
+  #ifdef DISPLAY_SENSOR_DETAILS
+    displaySensorDetails();
+  #endif  
+  
+//  serial_and_log_println("Sats HDOP Latitude  Longitude  Fix  Date       Time     Date Alt    Course Speed Card  heading  pitch    roll    accel                 pressure temp  ");
+  serial_and_log_print("Sats,HDOP,Latitude,Longitude,FixAge,Date,Time,Alt,Course,Speed,Card");
+#ifdef USE_10DOF_SENSOR
+  serial_and_log_print(",heading,pitch,roll,accel_x,accel_y,accel_z");
+#endif
+#ifdef USE_BMP_SENSOR  
+  serial_and_log_print(",pressure,temp");
+#endif  
+  #ifndef _GPS_NO_STATS
+    serial_and_log_print(",stats_chars,stats_sentences,stats_failed");
+#endif  
+    serial_and_log_println("");
+//  serial_and_log_println("          (deg)     (deg)      Age                      Age  (m)    --- from GPS ----    deg     deg     deg      x        y     z                 C  ");
+//  serial_and_log_println("------------------------------------------------------------------------------------------------------------------------------------------------------");
+
+  #ifdef DIRECT_SD
+    logfile.close();
+  #endif
+  gpsSerial.begin(9600);
+}
+
+void read_gyro()
+{  
+  
+};
+
+bool calculate_gyros_moving()
+{
+	return false;
+};
+
+void log_output_forced()
+{
+}
+
+void log_output()
+{
+    //if we've moved far enough
+      log_output_forced();
+}
+
+void loop()
+{
+  unsigned long paused_millis;
+
+  
+  	read_gyro();
+	bool gyros_moving = calculate_gyros_moving();
+	
+	switch(moving_state){
+	case MOVING:
+		if ( ! gyros_moving ) {
+			paused_millis = millis();
+			moving_state = PAUSED;
+                        #ifdef LED_INDICATORS
+                          digitalWrite(GREEN_LED,0);
+                          digitalWrite(YELLOW_LED,1);
+                        #endif
+		}
+		log_output;
+	case PAUSED:
+		if ( gyros_moving ) {
+			moving_state = MOVING;
+                        #ifdef LED_INDICATORS
+                          digitalWrite(YELLOW_LED,0);
+                          digitalWrite(GREEN_LED,1);
+                        #endif
+		}
+		else if ( has_millis_passed(paused_millis, PAUSE_DURATION) ) {
+			moving_state = STOPPED;
+                        #ifdef LED_INDICATORS
+                          digitalWrite(YELLOW_LED,0);
+                          digitalWrite(RED_LED,1);
+                        #endif
+			log_output_forced();
+			stop_gps();
+			}
+		else {
+			log_output();
+		}
+	case STOPPED:
+		if ( gyros_moving ) {
+			moving_state = MOVING;
+                        #ifdef LED_INDICATORS
+                          digitalWrite(RED_LED,0);
+                          digitalWrite(GREEN_LED,1);
+                        #endif
+			start_gps();
+			log_output_forced();
+		}
+	}
+	read_from_gps();
+}
 
