@@ -1,5 +1,10 @@
-#define noF  F
+// #define noF  F
+float seaLevelPressure = 101.325;
 
+#define SERIAL_OUTPUT
+#define EXPLAIN_OUTPUT
+
+#define GPS_ENABLE  7
 
 #include <SPI.h>
 
@@ -31,10 +36,10 @@
   #include <Adafruit_L3GD20_U.h>
   #include <Adafruit_Sensor.h>
   #include <Adafruit_LSM303_U.h>
-  #include "Adafruit_10DOF.h"
+  #include <Adafruit_10DOF.h>
   
   /* Assign a unique ID to the sensors */
-  JSAdafruit_10DOF                dof   = JSAdafruit_10DOF();
+  Adafruit_10DOF                dof   = Adafruit_10DOF();
   Adafruit_LSM303_Accel_Unified accel = Adafruit_LSM303_Accel_Unified(30301);
   Adafruit_LSM303_Mag_Unified   mag   = Adafruit_LSM303_Mag_Unified(30302);
   
@@ -85,6 +90,11 @@ void setup()
   Serial.println("by Mikal Hart");
   Serial.println();
 
+  pinMode(GPS_ENABLE, INPUT);
+  pinMode(2, OUTPUT);
+  pinMode(3, OUTPUT);
+  pinMode(4, OUTPUT);
+  pinMode(5, OUTPUT);
   pinMode(ledPin, OUTPUT);
 
   // make sure that the default chip select pin is set to
@@ -113,7 +123,7 @@ void setup()
     openLogfile();
   #endif
 
-    Serial.print(; 
+    Serial.print("Writing to "); 
     Serial.println(filename);
 
    logfile.print("Using TinyGPS library v. "); logfile.println(TinyGPS::library_version());
@@ -158,7 +168,17 @@ void setup()
   #endif  
   
 //  serial_and_log_println("Sats HDOP Latitude  Longitude  Fix  Date       Time     Date Alt    Course Speed Card  heading  pitch    roll    accel                 pressure temp  ");
-  serial_and_log_println("Sats,HDOP,Latitude,Longitude,Fix,Date,Time,Alt,Course,Speed,Card,heading,pitch,roll,accel_x,accel_y,accel_z,pressure,temp");
+  serial_and_log_print("Sats,HDOP,Latitude,Longitude,FixAge,Date,Time,Alt,Course,Speed,Card");
+#ifdef USE_10DOF_SENSOR
+  serial_and_log_print(",heading,pitch,roll,accel_x,accel_y,accel_z");
+#endif
+#ifdef USE_BMP_SENSOR  
+  serial_and_log_print(",pressure,temp");
+#endif  
+  #ifndef _GPS_NO_STATS
+    serial_and_log_print(",stats_chars,stats_sentences,stats_failed");
+#endif  
+    serial_and_log_println("");
 //  serial_and_log_println("          (deg)     (deg)      Age                      Age  (m)    --- from GPS ----    deg     deg     deg      x        y     z                 C  ");
 //  serial_and_log_println("------------------------------------------------------------------------------------------------------------------------------------------------------");
 
@@ -195,6 +215,14 @@ void loop()
   #ifdef USE_BMP_SENSOR
     sensors_event_t bmp_event;
     float temperature;
+
+    /* Calculate the altitude using the barometric pressure sensor */
+    bmp.getEvent(&bmp_event);
+    if (bmp_event.pressure)
+    {
+      /* Get ambient temperature in Celcius */
+      bmp.getTemperature(&temperature);
+    }
   #endif
 
   #ifdef USE_10DOF_SENSOR
@@ -215,28 +243,6 @@ void loop()
     }
   #endif  
   
-  #ifdef USE_BMP_SENSOR  
-    /* Calculate the altitude using the barometric pressure sensor */
-    bmp.getEvent(&bmp_event);
-    if (bmp_event.pressure)
-    {
-      /* Get ambient temperature in Celcius */
-      bmp.getTemperature(&temperature);
-  //    /* Convert atmospheric pressure, SLP and temp to altitude    */
-  //  #ifdef SERIAL_OUTPUT
-  
-  //    Serial.print("Alt: ");
-  //    Serial.print(bmp.pressureToAltitude(seaLevelPressure,
-  //                                        bmp_event.pressure,
-  //                                        temperature)); 
-  //    Serial.print(" m; ");
-  //    /* Display the temperature */
-  //    Serial.print("Temp: ");
-  //    Serial.print(temperature);
-  //    Serial.print(" C");
-  //#endif
-    }
-  #endif
 
   #ifdef DIRECT_SD
     openLogfile();  
@@ -245,7 +251,6 @@ void loop()
   print_int(gps.satellites(), TinyGPS::GPS_INVALID_SATELLITES, 5);
   print_str(",",1);
   print_int(gps.hdop(), TinyGPS::GPS_INVALID_HDOP, 5);
-  print_str(",",1);
   gps.f_get_position(&flat, &flon, &age);
   print_str(",",1);
   print_float(flat, TinyGPS::GPS_INVALID_F_ANGLE, 10, 6);
@@ -256,10 +261,16 @@ void loop()
   print_str(",",1);
   print_date(gps);
   print_str(",",1);
+#ifdef EXPLAIN_OUTPUT
+  print_str("Alt:",4);
+#endif
   print_float(gps.f_altitude(), TinyGPS::GPS_INVALID_F_ALTITUDE, 7, 2);
   print_str(",",1);
   print_float(gps.f_course(), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
   print_str(",",1);
+#ifdef EXPLAIN_OUTPUT
+  print_str("Speed:",6);
+#endif
   print_float(gps.f_speed_kmph(), TinyGPS::GPS_INVALID_F_SPEED, 6, 2);
   print_str(",",1);
   print_str(gps.f_course() == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(gps.f_course()), 6);
@@ -268,6 +279,9 @@ void loop()
 //  print_float(flat == TinyGPS::GPS_INVALID_F_ANGLE ? TinyGPS::GPS_INVALID_F_ANGLE : TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
 //  print_str(flat == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON)), 6);
 
+#ifdef EXPLAIN_OUTPUT
+  print_str("heading/pitch/roll ",19);
+#endif  
    print_float(orientation.heading,-1,9,3);
   print_str(",",1);
    print_float(orientation.pitch,-1,9,3);
@@ -275,12 +289,28 @@ void loop()
    print_float(orientation.roll,-1,9,3);
   print_str(",",1);
 
+#ifdef EXPLAIN_OUTPUT
+  print_str("accel xyz ",10);
+#endif  
    print_float(accel_event.acceleration.x,-1,9,3);
   print_str(",",1);
    print_float(accel_event.acceleration.y,-1,9,3);
   print_str(",",1);
    print_float(accel_event.acceleration.z,-1,9,3);
   print_str(",",1);
+  #ifdef USE_BMP_SENSOR  
+    /* Calculate the altitude using the barometric pressure sensor */
+      /* Convert atmospheric pressure, SLP and temp to altitude    */
+  
+      print_float(bmp.pressureToAltitude(SENSORS_PRESSURE_SEALEVELHPA,
+                                          bmp_event.pressure
+                                          //,temperature
+                                          ),-1,6,2); 
+      print_str(" m,",3);
+      /* Display the temperature */
+      print_float(temperature,-1,6,2);
+      print_str(" C,",3);
+  #endif
    
 
   #ifndef _GPS_NO_STATS
