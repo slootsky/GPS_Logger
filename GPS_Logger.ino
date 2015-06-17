@@ -1,5 +1,6 @@
 // this is undo of everything in the IDE
 #include <TinyGPS.h>
+#include <HardwareSerial.h>
 
 // GPS commands come from http://www.adafruit.com/datasheets/PMTK_A11.pdf
 
@@ -51,9 +52,9 @@ float seaLevelPressure = 101.325;
 File logfile;
 #endif
 
-#ifdef SD_LOGGER
-#define logfile Serial2
-#endif
+#include "cryptoSerial.h"
+//#define logfile Serial2  
+CryptoHardwareSerial logfile(&Serial2);
 
 
 #define USE_10DOF_SENSOR
