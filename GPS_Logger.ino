@@ -1,6 +1,6 @@
+#define _GPS_NO_STATS
 // this is undo of everything in the IDE
 #include <TinyGPS.h>
-#include <HardwareSerial.h>
 
 // GPS commands come from http://www.adafruit.com/datasheets/PMTK_A11.pdf
 
@@ -36,7 +36,9 @@ float seaLevelPressure = 101.325;
 #define SPEED_DELTA_THRESHOLD  0.10    // 10%
 #define THRESHOLD_METRES       500     // metres
 #define SERIAL_OUTPUT
-#define EXPLAIN_OUTPUT
+// #define EXPLAIN_OUTPUT
+#define RUN_FLAG_OUTPUT
+//#define WRITE_CSV_HEADER
 #define LED_INDICATORS
 
 #include <SPI.h>
@@ -52,9 +54,9 @@ float seaLevelPressure = 101.325;
 File logfile;
 #endif
 
-#include "cryptoSerial.h"
-//#define logfile Serial2  
-CryptoHardwareSerial logfile(&Serial2);
+//#include "cryptoSerial.h"
+#define logfile Serial2  
+//CryptoHardwareSerial logfile(Serial2);
 
 
 #define USE_10DOF_SENSOR
@@ -183,7 +185,7 @@ void gps_write(char *cmd_string)
   char checksum_str[3];
   byte checksum = 0;
   char *cmd_char;
-
+  
   // if there is already a $ at the beginning of the command, skip it
   cmd_char = cmd_string;
   while (*cmd_char == '$')
@@ -423,7 +425,7 @@ void take_readings()
 
 void write_csv_header()
 {
-#ifdef EXPLAIN_OUTPUT
+#ifdef RUN_FLAG_OUTPUT
   print_str("RunFlags,");
 #endif  
   print_str("Date,Time");
@@ -475,7 +477,7 @@ void write_csv_header()
 void log_output_forced(bool take_reading = true)
 {
   if (take_reading) take_readings();
-#ifdef EXPLAIN_OUTPUT
+#ifdef RUN_FLAG_OUTPUT
   print_str(g_runFlags);
   print_str(",");
 #endif  
@@ -549,10 +551,14 @@ void log_output_forced(bool take_reading = true)
                                       g_sensor_data.bmp_event.pressure
                                       //,temperature
                                       ),999.0,6,2); 
+#ifdef EXPLAIN_OUTPUT
   print_str(" m,");
+#endif
   /* Display the temperature */
   print_float(g_sensor_data.temperature,999.0,6,2);
+#ifdef EXPLAIN_OUTPUT
   print_str(" C");
+#endif
 #endif
   print_str(",");
 #ifdef EXPLAIN_OUTPUT
@@ -564,7 +570,7 @@ void log_output_forced(bool take_reading = true)
   print_str(",");
   print_ulong(g_sensor_data.last_time_fix, TinyGPS::GPS_INVALID_FIX_TIME, 5);
 
-
+// TODO JZAS should add in the GPS Stats output here
 
   print_str("\n");
   
@@ -623,6 +629,9 @@ void log_output()
 void setup() {
   g_last_sensor_data.latitude = g_last_sensor_data.longitude = 0.0;
   g_last_sensor_data.last_position_fix = 0;
+  g_runFlags[0] = 0;
+  g_runFlags[1] = 0;
+  g_runFlags[2] = 0;
 
   Serial.begin(57600);
   Serial.print("Using TinyGPS library v. "); Serial.println(TinyGPS::library_version());
@@ -729,7 +738,9 @@ void setup() {
   start_gps();
 
   read_gps_buffer();
+#ifdef WRITE_CSV_HEADER  
   write_csv_header();
+#endif  
   read_gps_buffer();
   log_output_forced();
 }
