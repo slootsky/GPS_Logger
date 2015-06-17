@@ -1,8 +1,8 @@
 #define notF  // This define macro is used instead of F to easily turn off F
 
-#define USE_MAG_SENSOR
-#define USE_ACCEL_SENSOR
-//#define USE_GPS_SENSOR
+//#define USE_MAG_SENSOR
+//#define USE_ACCEL_SENSOR
+#define USE_GPS_SENSOR
 #define LOG_LOOP_MILLIS  1000
 
 //SERIAL_DEBUGGING #define SERIAL_DEBUGGING 5
@@ -63,7 +63,7 @@ Adafruit_GPS GPS(&mySerial);
 
 // Set GPSECHO to 'false' to turn off echoing the GPS data to the Serial console
 // Set to 'true' if you want to debug and listen to the raw GPS sentences
-#define GPSECHO  false
+#define GPSECHO  true
 /* set to true to only log to SD when GPS has a fix, for debugging, keep it false */
 #define LOG_FIXONLY false  
 
@@ -147,8 +147,6 @@ void displaySensorDetails(void)
   Serial.print  (F("Mag   Resolution:   ")); Serial.print(mag_sensor.resolution); Serial.println(" uT");  
 #endif
   Serial.println(F("------------------------------------"));
-//SERIAL_DEBUGGING #endif  
-  delay(500);
 }
 
 
