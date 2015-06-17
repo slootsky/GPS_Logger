@@ -80,9 +80,9 @@ void serial_and_log_println(float &f, int& i);
 void setup()
 {
   Serial.begin(57600);
-  Serial.print(noF("Using TinyGPS library v. ")); Serial.println(TinyGPS::library_version());
+  Serial.print("Using TinyGPS library v. "); Serial.println(TinyGPS::library_version());
 
-  Serial.println(noF("by Mikal Hart"));
+  Serial.println("by Mikal Hart");
   Serial.println();
 
   pinMode(ledPin, OUTPUT);
@@ -96,7 +96,7 @@ void setup()
     if (!SD.begin(chipSelect, 11, 12, 13)) {
       #ifdef SERIAL_OUTPUT
         //if (!SD.begin(chipSelect)) {      // if you're using an UNO, you can use this line instead
-        Serial.println(noF("Card init. failed!"));
+        Serial.println("Card init. failed!");
       #endif
       error(2);
     }
@@ -113,15 +113,15 @@ void setup()
     openLogfile();
   #endif
 
-    Serial.print(noF("Writing to ")); 
+    Serial.print(; 
     Serial.println(filename);
 
-   logfile.print(noF("Using TinyGPS library v. ")); logfile.println(TinyGPS::library_version());
+   logfile.print("Using TinyGPS library v. "); logfile.println(TinyGPS::library_version());
 #ifdef SD_LOGGER
  smartdelay(15);
  logfile.begin(9600);
 #endif   
-//  logfile.println(noF("by Mikal Hart"));
+//  logfile.println("by Mikal Hart");
   logfile.println();
 
   #ifdef USE_10DOF_SENSOR
@@ -129,7 +129,7 @@ void setup()
     if(!mag.begin())
     {
       /* There was a problem detecting the LSM303 ... check your connections */
-      serial_and_log_println(noF("no LSM303 detected"));
+      serial_and_log_println("no LSM303 detected");
       while(1);
     }
   
@@ -137,7 +137,7 @@ void setup()
     if(!accel.begin())
     {
       /* There was a problem detecting the ADXL345 ... check your connections */
-      serial_and_log_println(noF("no LSM303 detected"));
+      serial_and_log_println("no LSM303 detected");
       while(1);
     }
   #endif
@@ -147,7 +147,7 @@ void setup()
     {
       /* There was a problem detecting the BMP180 ... check your connections */
       #ifdef SERIAL_OUTPUT
-        Serial.println(noF("no BMP180 detected"));
+        Serial.println("no BMP180 detected");
       #endif
       while(1);
     }
@@ -157,10 +157,10 @@ void setup()
     displaySensorDetails();
   #endif  
   
-//  serial_and_log_println(noF("Sats HDOP Latitude  Longitude  Fix  Date       Time     Date Alt    Course Speed Card  heading  pitch    roll    accel                 pressure temp  "));
-  serial_and_log_println(noF("Sats,HDOP,Latitude,Longitude,Fix,Date,Time,Alt,Course,Speed,Card,heading,pitch,roll,accel_x,accel_y,accel_z,pressure,temp"));
-//  serial_and_log_println(noF("          (deg)     (deg)      Age                      Age  (m)    --- from GPS ----    deg     deg     deg      x        y     z                 C  "));
-//  serial_and_log_println(noF("------------------------------------------------------------------------------------------------------------------------------------------------------"));
+//  serial_and_log_println("Sats HDOP Latitude  Longitude  Fix  Date       Time     Date Alt    Course Speed Card  heading  pitch    roll    accel                 pressure temp  ");
+  serial_and_log_println("Sats,HDOP,Latitude,Longitude,Fix,Date,Time,Alt,Course,Speed,Card,heading,pitch,roll,accel_x,accel_y,accel_z,pressure,temp");
+//  serial_and_log_println("          (deg)     (deg)      Age                      Age  (m)    --- from GPS ----    deg     deg     deg      x        y     z                 C  ");
+//  serial_and_log_println("------------------------------------------------------------------------------------------------------------------------------------------------------");
 
   #ifdef DIRECT_SD
     logfile.close();
@@ -174,7 +174,7 @@ void setup()
     logfile = SD.open(filename, FILE_WRITE);
     if( ! logfile ) {
       #ifdef SERIAL_OUTPUT
-        Serial.print(noF("Couldn't create ")); 
+        Serial.print("Couldn't create "); 
         Serial.println(filename);
       #endif
       error(3);
@@ -225,15 +225,15 @@ void loop()
   //    /* Convert atmospheric pressure, SLP and temp to altitude    */
   //  #ifdef SERIAL_OUTPUT
   
-  //    Serial.print(noF("Alt: "));
+  //    Serial.print("Alt: ");
   //    Serial.print(bmp.pressureToAltitude(seaLevelPressure,
   //                                        bmp_event.pressure,
   //                                        temperature)); 
-  //    Serial.print(noF(" m; "));
+  //    Serial.print(" m; ");
   //    /* Display the temperature */
-  //    Serial.print(noF("Temp: "));
+  //    Serial.print("Temp: ");
   //    Serial.print(temperature);
-  //    Serial.print(noF(" C"));
+  //    Serial.print(" C");
   //#endif
     }
   #endif
@@ -364,7 +364,7 @@ static void print_date(TinyGPS &gps)
   gps.crack_datetime(&year, &month, &day, &hour, &minute, &second, &hundredths, &age);
   if ( day == 0)
   {
-    serial_and_log_print(noF("**********,******** "));
+    serial_and_log_print("**********,******** ");
   }
   else
   {
@@ -426,25 +426,25 @@ void error(uint8_t errno) {
   //
   ////SERIAL_DEBUGGING #if SERIAL_DEBUGGING > 3
   //  #ifdef SERIAL_OUTPUT
-  //  Serial.println(noF("------------------------------------"));
+  //  Serial.println("------------------------------------");
   //  #endif
   //#ifdef USE_10DOF_SENSOR
-  //  serial_and_log_print  (noF("Accel Sensor:       ")); serial_and_log_println(accel_sensor.name);
-  //  serial_and_log_print  (noF("Accel Driver Ver:   ")); serial_and_log_println(accel_sensor.version);
-  //  serial_and_log_print  (noF("Accel Unique ID:    ")); serial_and_log_println(accel_sensor.sensor_id);
-  //  serial_and_log_print  (noF("Accel Max Value:    ")); serial_and_log_print(accel_sensor.max_value); serial_and_log_println(" m/s^2");
-  //  serial_and_log_print  (noF("Accel Min Value:    ")); serial_and_log_print(accel_sensor.min_value); serial_and_log_println(" m/s^2");
-  //  serial_and_log_print  (noF("Accel Resolution:   ")); serial_and_log_print(accel_sensor.resolution); serial_and_log_println(" m/s^2");  
+  //  serial_and_log_print  ("Accel Sensor:       "); serial_and_log_println(accel_sensor.name);
+  //  serial_and_log_print  ("Accel Driver Ver:   "); serial_and_log_println(accel_sensor.version);
+  //  serial_and_log_print  ("Accel Unique ID:    "); serial_and_log_println(accel_sensor.sensor_id);
+  //  serial_and_log_print  ("Accel Max Value:    "); serial_and_log_print(accel_sensor.max_value); serial_and_log_println(" m/s^2");
+  //  serial_and_log_print  ("Accel Min Value:    "); serial_and_log_print(accel_sensor.min_value); serial_and_log_println(" m/s^2");
+  //  serial_and_log_print  ("Accel Resolution:   "); serial_and_log_print(accel_sensor.resolution); serial_and_log_println(" m/s^2");  
   //
-  //  serial_and_log_print  (noF("Mag   Sensor:       ")); serial_and_log_println(mag_sensor.name);
-  //  serial_and_log_print  (noF("Mag   Driver Ver:   ")); serial_and_log_println(mag_sensor.version);
-  //  serial_and_log_print  (noF("Mag   Unique ID:    ")); serial_and_log_println(mag_sensor.sensor_id);
-  //  serial_and_log_print  (noF("Mag   Max Value:    ")); serial_and_log_print(mag_sensor.max_value); serial_and_log_println(" uT");
-  //  serial_and_log_print  (noF("Mag   Min Value:    ")); serial_and_log_print(mag_sensor.min_value); serial_and_log_println(" uT");
-  //  serial_and_log_print  (noF("Mag   Resolution:   ")); serial_and_log_print(mag_sensor.resolution); serial_and_log_println(" uT");  
+  //  serial_and_log_print  ("Mag   Sensor:       "); serial_and_log_println(mag_sensor.name);
+  //  serial_and_log_print  ("Mag   Driver Ver:   "); serial_and_log_println(mag_sensor.version);
+  //  serial_and_log_print  ("Mag   Unique ID:    "); serial_and_log_println(mag_sensor.sensor_id);
+  //  serial_and_log_print  ("Mag   Max Value:    "); serial_and_log_print(mag_sensor.max_value); serial_and_log_println(" uT");
+  //  serial_and_log_print  ("Mag   Min Value:    "); serial_and_log_print(mag_sensor.min_value); serial_and_log_println(" uT");
+  //  serial_and_log_print  ("Mag   Resolution:   "); serial_and_log_print(mag_sensor.resolution); serial_and_log_println(" uT");  
   //#endif
   //  #ifdef SERIAL_OUTPUT
-  //  Serial.println(noF("------------------------------------"));
+  //  Serial.println("------------------------------------");
   //  #endif
   //}
 #endif 
