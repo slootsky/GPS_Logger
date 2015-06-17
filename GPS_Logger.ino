@@ -3,7 +3,8 @@
 
 // GPS commands come from http://www.adafruit.com/datasheets/PMTK_A11.pdf
 
-#define PAUSE_DURATION  15000 // 180000  // 3 minutes
+#define PAUSE_DURATION  180000  // 3 minutes
+// #define PAUSE_DURATION  15000 // 15 seconds
 
 enum MOVING_STATE { MOVING, PAUSED, STOPPED };
 MOVING_STATE moving_state;
@@ -25,10 +26,12 @@ unsigned char green_level =255;
 unsigned long paused_millis = millis();
 
 float seaLevelPressure = 101.325;
-#define GYRO_THRESHOLD  1
-#define ACCEL_THRESHOLD  2
+#define GYRO_THRESHOLD  1.5
 //#define MAG_THRESHOLD  10
-#define ACCEL_DELTA_THRESHOLD  0.25    // 25%
+//#define ACCEL_THRESHOLD  3.0
+//#define ACCEL_DELTA_THRESHOLD  0.25    // 25%
+#define ACCEL_THRESHOLD  10.0
+#define ACCEL_DELTA_THRESHOLD  0.95    // 25%
 #define SPEED_DELTA_THRESHOLD  0.10    // 10%
 #define THRESHOLD_METRES       500     // metres
 #define SERIAL_OUTPUT
@@ -310,6 +313,13 @@ void read_gyro()
 
 bool calculate_moving()
 {
+  if (g_sensor_data.speed_kmph > 10 )  // a minimal number  : unfortunately, it is common to see numbers greater than one : even at a standstill
+  {
+    Serial.println("moving because speed_kmph");
+    g_runFlags[1]='s';
+    return true;
+  }
+
   if ( abs(g_sensor_data.gyro_event.gyro.z) > GYRO_THRESHOLD )
   {
     Serial.println("moving because gyro_z");
@@ -332,7 +342,7 @@ bool calculate_moving()
   {
     Serial.print("moving because acceleration: aggregate_accel ( ");
     Serial.print(g_sensor_data.aggregate_accel);
-   Serial.print(" ) - last.aggregate_accel( ");
+    Serial.print(" ) - last.aggregate_accel( ");
     Serial.print(g_last_sensor_data.aggregate_accel);
     Serial.print(" ) = ");
     Serial.println( g_sensor_data.aggregate_accel - g_last_sensor_data.aggregate_accel);
@@ -340,12 +350,8 @@ bool calculate_moving()
     g_runFlags[1]='a';
     return true;
   }
-  if (g_sensor_data.speed_kmph > 10 )  // a minimal number  : unfortunately, it is common to see numbers greater than one : even at a standstill
-  {
-    Serial.println("moving because speed_kmph");
-    g_runFlags[1]='s';
-    return true;
-  }
+
+
 //  if (g_sensor_data.speed > g_last_sensor_data.speed*SPEED_THRESHOLD )
 //    return true;
 //  if (g_sensor_data.speed < g_last_sensor_data.speed/SPEED_THRESHOLD )
@@ -397,6 +403,20 @@ void take_readings()
   g_sensor_data.aggregate_accel = abs(g_sensor_data.accel_event.acceleration.x) + abs(g_sensor_data.accel_event.acceleration.y) + abs(g_sensor_data.accel_event.acceleration.z) ;
   g_sensor_data.aggregate_gyro = abs(g_sensor_data.gyro_event.gyro.x) + abs(g_sensor_data.gyro_event.gyro.y) + abs(g_sensor_data.gyro_event.gyro.z) ;
   g_sensor_data.aggregate_mag = abs(g_sensor_data.mag_event.magnetic.x) + abs(g_sensor_data.mag_event.magnetic.y) + abs(g_sensor_data.mag_event.magnetic.z) ;
+
+  #ifdef USE_BMP_SENSOR
+    sensors_event_t bmp_event;
+    float temperature;
+
+    /* Calculate the altitude using the barometric pressure sensor */
+    bmp.getEvent(&g_sensor_data.bmp_event);
+    if (bmp_event.pressure)
+    {
+      /* Get ambient temperature in Celcius */
+      bmp.getTemperature(&g_sensor_data.temperature);
+    }
+  #endif
+
   
 }
 
@@ -433,6 +453,7 @@ void write_csv_header()
   print_str(",gyro_hdr",10);
 #endif  
   print_str(",gyro_x,gyro_y,gyro_z");
+  print_str(",bmp_pressure");
   print_str(",pressure_by_altitude,Temperature");
 #ifdef EXPLAIN_OUTPUT
   print_str(",fix_time_hdr");
@@ -459,21 +480,21 @@ void log_output_forced(bool take_reading = true)
 #endif  
   print_date(gps);
   print_str(",");
-  print_float(g_sensor_data.latitude, TinyGPS::GPS_INVALID_ANGLE, 11, 6);
+  print_float(g_sensor_data.latitude, 1000.0 /*TinyGPS::GPS_INVALID_ANGLE*/, 11, 6);
   print_str(",");
-  print_float(g_sensor_data.longitude, TinyGPS::GPS_INVALID_ANGLE, 11, 6);
+  print_float(g_sensor_data.longitude, 1000.0 /*TinyGPS::GPS_INVALID_ANGLE*/, 11, 6);
   print_str(",");
 #ifdef EXPLAIN_OUTPUT
   print_str("alt,");
 #endif  
-  print_ulong(g_sensor_data.altitude, TinyGPS::GPS_INVALID_ALTITUDE, 5);
+  print_ulong(g_sensor_data.altitude, 1000 /*TinyGPS::GPS_INVALID_ALTITUDE*/, 5);
   print_str(",");
 #ifdef EXPLAIN_OUTPUT
   print_str("course,");
 #endif  
-  print_float(g_sensor_data.course, TinyGPS::GPS_INVALID_ANGLE, 11, 6);
+  print_float(g_sensor_data.course, 1000.0 /*TinyGPS::GPS_INVALID_ANGLE*/, 11, 6);
   print_str(",");
-  print_float(g_sensor_data.speed_kmph, TinyGPS::GPS_INVALID_SPEED, 5, 1);
+  print_float(g_sensor_data.speed_kmph, -1 /*TinyGPS::GPS_INVALID_SPEED*/, 5, 1);
 #ifdef EXPLAIN_OUTPUT
   print_str(" km/h");
 #endif  
@@ -521,6 +542,8 @@ void log_output_forced(bool take_reading = true)
 #endif
 #ifdef USE_BMP_SENSOR
   print_str(",");
+  print_float(g_sensor_data.bmp_event.pressure,999.0,6,2);
+  print_str(",");
   print_float(bmp.pressureToAltitude(SENSORS_PRESSURE_SEALEVELHPA,
                                       g_sensor_data.bmp_event.pressure
                                       //,temperature
@@ -557,23 +580,20 @@ void log_output()
 
   take_readings();
 
-  if ( g_sensor_data.last_position_fix !=  TinyGPS::GPS_INVALID_FIX_TIME
-       && g_sensor_data.last_position_fix > g_last_sensor_data.last_position_fix
-     ) // we've gotten a valid reading since the last one
-     {
-       if ( g_sensor_data.speed_kmph > 5.0
-       && ( abs(g_sensor_data.speed_kmph-g_last_sensor_data.speed_kmph)/g_sensor_data.speed_kmph) > SPEED_DELTA_THRESHOLD
-       )
-       {
-         Serial.println("logging because speed_kmph delta threshold");
-         do_log_output = true;
-       }
-     }
-  else if ( g_sensor_data.aggregate_accel != 0.0
+  if ( g_sensor_data.aggregate_accel != 0.0
     && (abs(g_sensor_data.aggregate_accel-g_last_sensor_data.aggregate_accel)/g_sensor_data.aggregate_accel > ACCEL_DELTA_THRESHOLD )
     )
     {
-      Serial.println("logging because accel delta threshold");
+      Serial.print("logging because accel delta threshold  abs(g_sensor_data.aggregate_accel(");
+
+      Serial.print(g_sensor_data.aggregate_accel);
+      Serial.print(" ) - last.aggregate_accel( ");
+      Serial.print(g_last_sensor_data.aggregate_accel);
+      Serial.print(" ) ) / g_sensor_data.aggregate_accel( ");
+      Serial.print(g_sensor_data.aggregate_accel);
+      Serial.print(" ) = ");
+      Serial.println( abs(g_sensor_data.aggregate_accel-g_last_sensor_data.aggregate_accel)/g_sensor_data.aggregate_accel );
+
       do_log_output=true;
     }
   else if ( TinyGPS::distance_between(g_sensor_data.latitude, g_sensor_data.longitude, g_last_sensor_data.latitude, g_last_sensor_data.longitude) > THRESHOLD_METRES )
@@ -581,6 +601,19 @@ void log_output()
     Serial.println("logging because distance travelled > THRESHOLD_METRES");
     do_log_output = true;
   }
+//  else if ( g_sensor_data.last_position_fix !=  TinyGPS::GPS_INVALID_FIX_TIME
+//       && g_sensor_data.last_position_fix > g_last_sensor_data.last_position_fix
+//     ) // we've gotten a valid reading since the last one
+//     {
+//       if ( g_sensor_data.speed_kmph > 5.0
+//       && ( abs(g_sensor_data.speed_kmph-g_last_sensor_data.speed_kmph)/g_sensor_data.speed_kmph) > SPEED_DELTA_THRESHOLD
+//       )
+//       {
+//         Serial.println("logging because speed_kmph delta threshold");
+//         do_log_output = true;
+//       }
+//     }
+
   if (do_log_output)
     log_output_forced();
 }
@@ -706,8 +739,8 @@ void loop()
   g_runFlags[0]=0;
   g_runFlags[1]=0;
   g_runFlags[2]=0;
+  read_gyro();
   take_readings();
-//  read_gyro();
   bool moving = calculate_moving();
 
   switch (moving_state) {
@@ -763,7 +796,7 @@ void loop()
 #endif
         start_gps();
 
-        g_runFlags[0]='G';
+        g_runFlags[0]='G'; 
 
         log_output_forced();
       }
