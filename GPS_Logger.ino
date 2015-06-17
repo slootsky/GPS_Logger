@@ -6,7 +6,10 @@
 
 #define USE_MAG_SENSOR
 #define USE_ACCEL_SENSOR
-#define GPSECHO
+// #define GPSECHO
+#define SERIAL_OUTPUT
+
+#define LOOP_DELAY 5000
 
 #ifdef USE_MAG_SENSOR || USE_ACCEL_SENSOR
 #include <Wire.h>
@@ -59,9 +62,11 @@ void setup()
 {
   Serial.begin(115200);
   
-  Serial.print(F("Testing TinyGPS library v. ")); Serial.println(TinyGPS::library_version());
+  Serial.print(F("Using TinyGPS library v. ")); Serial.println(TinyGPS::library_version());
+#ifdef SERIAL_OUTPUT
   Serial.println(F("by Mikal Hart"));
   Serial.println();
+#endif
 
   pinMode(ledPin, OUTPUT);
 
@@ -94,12 +99,34 @@ void setup()
   Serial.print(F("Writing to ")); 
   Serial.println(filename);
 
-  logfile.print(F("Testing TinyGPS library v. ")); logfile.println(TinyGPS::library_version());
-  logfile.println(F("by Mikal Hart"));
+  logfile.print(F("Using TinyGPS library v. ")); logfile.println(TinyGPS::library_version());
+//  logfile.println(F("by Mikal Hart"));
   logfile.println();
 
-  serial_and_log_println(F("Sats HDOP Latitude  Longitude  Fix  Date       Time     Date Alt    Course Speed Card  Distance Course Card  Chars Sentences Checksum"));
-  serial_and_log_println(F("          (deg)     (deg)      Age                      Age  (m)    --- from GPS ----  ---- to London  ----  RX    RX        Fail"));
+  #ifdef USE_MAG_SENSOR
+  /* Initialise the sensor */
+  if(!mag.begin())
+  {
+    /* There was a problem detecting the LSM303 ... check your connections */
+    serial_and_log_println(F("Ooops, no LSM303 detected ... Check your wiring!"));
+    while(1);
+  }
+  #endif
+
+  #ifdef USE_ACCEL_SENSOR
+  /* Initialise the sensor */
+  if(!accel.begin())
+  {
+    /* There was a problem detecting the ADXL345 ... check your connections */
+    serial_and_log_println(F("Ooops, no LSM303 detected ... Check your wiring!"));
+    while(1);
+  }
+  #endif
+
+  displaySensorDetails();
+  
+  serial_and_log_println(F("Sats HDOP Latitude  Longitude  Fix  Date       Time     Date Alt    Course Speed Card  mag   accel pressure temp go here              "));
+  serial_and_log_println(F("          (deg)     (deg)      Age                      Age  (m)    --- from GPS ----  x y z x y z                                   "));
   serial_and_log_println(F("-------------------------------------------------------------------------------------------------------------------------------------"));
 
   logfile.close();
@@ -122,6 +149,11 @@ void loop()
   unsigned short sentences = 0, failed = 0;
 //  static const double LONDON_LAT = 51.508131, LONDON_LON = -0.128002;
 
+  sensors_event_t mag_event; 
+  mag.getEvent(&mag_event);
+  sensors_event_t accel_event; 
+  accel.getEvent(&accel_event);
+
   openLogfile();  
 
   print_int(gps.satellites(), TinyGPS::GPS_INVALID_SATELLITES, 5);
@@ -139,6 +171,13 @@ void loop()
 //  print_float(flat == TinyGPS::GPS_INVALID_F_ANGLE ? TinyGPS::GPS_INVALID_F_ANGLE : TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
 //  print_str(flat == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON)), 6);
 
+   print_float(mag_event.magnetic.x,-1,7,3);
+   print_float(mag_event.magnetic.y,-1,7,3);
+   print_float(mag_event.magnetic.z,-1,7,3);
+   print_float(accel_event.acceleration.x,-1,7,3);
+   print_float(accel_event.acceleration.y,-1,7,3);
+   print_float(accel_event.acceleration.z,-1,7,3);
+
 #ifndef _GPS_NO_STATS
   gps.stats(&chars, &sentences, &failed);
   print_int(chars, 0xFFFFFFFF, 6);
@@ -149,7 +188,7 @@ void loop()
   
 //  logfile.flush();
   logfile.close();
-  smartdelay(1000);
+  smartdelay(LOOP_DELAY);
 }
 
 static void smartdelay(unsigned long ms)
@@ -210,8 +249,7 @@ static void print_date(TinyGPS &gps)
   byte month, day, hour, minute, second, hundredths;
   unsigned long age;
   gps.crack_datetime(&year, &month, &day, &hour, &minute, &second, &hundredths, &age);
-//  if (age == TinyGPS::GPS_INVALID_AGE)
-  if (year == 2000)
+  if ( day == 0)
     serial_and_log_print(F("********** ******** "));
   else
   {
@@ -272,68 +310,84 @@ void displaySensorDetails(void)
 //SERIAL_DEBUGGING #if SERIAL_DEBUGGING > 3
   Serial.println(F("------------------------------------"));
 #ifdef USE_ACCEL_SENSOR
-  Serial.print  (F("Accel Sensor:       ")); Serial.println(accel_sensor.name);
-  Serial.print  (F("Accel Driver Ver:   ")); Serial.println(accel_sensor.version);
-  Serial.print  (F("Accel Unique ID:    ")); Serial.println(accel_sensor.sensor_id);
-  Serial.print  (F("Accel Max Value:    ")); Serial.print(accel_sensor.max_value); Serial.println(" m/s^2");
-  Serial.print  (F("Accel Min Value:    ")); Serial.print(accel_sensor.min_value); Serial.println(" m/s^2");
-  Serial.print  (F("Accel Resolution:   ")); Serial.print(accel_sensor.resolution); Serial.println(" m/s^2");  
+  serial_and_log_print  (F("Accel Sensor:       ")); serial_and_log_println(accel_sensor.name);
+  serial_and_log_print  (F("Accel Driver Ver:   ")); serial_and_log_println(accel_sensor.version);
+  serial_and_log_print  (F("Accel Unique ID:    ")); serial_and_log_println(accel_sensor.sensor_id);
+  serial_and_log_print  (F("Accel Max Value:    ")); serial_and_log_print(accel_sensor.max_value); serial_and_log_println(" m/s^2");
+  serial_and_log_print  (F("Accel Min Value:    ")); serial_and_log_print(accel_sensor.min_value); serial_and_log_println(" m/s^2");
+  serial_and_log_print  (F("Accel Resolution:   ")); serial_and_log_print(accel_sensor.resolution); serial_and_log_println(" m/s^2");  
 #endif  
 #ifdef USE_MAG_SENSOR
-  Serial.print  (F("Mag   Sensor:       ")); Serial.println(mag_sensor.name);
-  Serial.print  (F("Mag   Driver Ver:   ")); Serial.println(mag_sensor.version);
-  Serial.print  (F("Mag   Unique ID:    ")); Serial.println(mag_sensor.sensor_id);
-  Serial.print  (F("Mag   Max Value:    ")); Serial.print(mag_sensor.max_value); Serial.println(" uT");
-  Serial.print  (F("Mag   Min Value:    ")); Serial.print(mag_sensor.min_value); Serial.println(" uT");
-  Serial.print  (F("Mag   Resolution:   ")); Serial.print(mag_sensor.resolution); Serial.println(" uT");  
+  serial_and_log_print  (F("Mag   Sensor:       ")); serial_and_log_println(mag_sensor.name);
+  serial_and_log_print  (F("Mag   Driver Ver:   ")); serial_and_log_println(mag_sensor.version);
+  serial_and_log_print  (F("Mag   Unique ID:    ")); serial_and_log_println(mag_sensor.sensor_id);
+  serial_and_log_print  (F("Mag   Max Value:    ")); serial_and_log_print(mag_sensor.max_value); serial_and_log_println(" uT");
+  serial_and_log_print  (F("Mag   Min Value:    ")); serial_and_log_print(mag_sensor.min_value); serial_and_log_println(" uT");
+  serial_and_log_print  (F("Mag   Resolution:   ")); serial_and_log_print(mag_sensor.resolution); serial_and_log_println(" uT");  
 #endif
   Serial.println(F("------------------------------------"));
 }
 
 void serial_and_log_print(char c)
 {
+#ifdef SERIAL_OUTPUT
   Serial.print(c);
+#endif
   logfile.print(c);
 }
 
 void serial_and_log_print(char* s)
 {
+#ifdef SERIAL_OUTPUT
   Serial.print(s);
+#endif
   logfile.print(s);
 }  
 void serial_and_log_println(char c)
 {
+#ifdef SERIAL_OUTPUT
   Serial.println(c);
+#endif
   logfile.println(c);
 }
 
 void serial_and_log_println(char* s)
 {
+#ifdef SERIAL_OUTPUT
   Serial.println(s);
+#endif
   logfile.println(s);
 }
 
 void serial_and_log_print(const __FlashStringHelper* s)
 {
+#ifdef SERIAL_OUTPUT
   Serial.print(s);
+#endif
   logfile.print(s);
 }  
 
 void serial_and_log_println(const __FlashStringHelper* s)
 {
+#ifdef SERIAL_OUTPUT
   Serial.println(s);
+#endif
   logfile.println(s);
 }
 
 void serial_and_log_print(float &f, int& i)
 {
+#ifdef SERIAL_OUTPUT
   Serial.print(f,i);
+#endif
   logfile.print(f,i);
 }
 
 void serial_and_log_println(float &f, int& i)
 {
+#ifdef SERIAL_OUTPUT
   Serial.print(f,i);
+#endif
   logfile.print(f,i);
 }
 
