@@ -4,26 +4,27 @@
 
 #include <TinyGPS.h>
 
-#define USE_MAG_SENSOR
-#define USE_ACCEL_SENSOR
+#define USE_10DOF_SENSOR
 // #define GPSECHO
 #define SERIAL_OUTPUT
 
 #define LOOP_DELAY 5000
 
-#ifdef USE_MAG_SENSOR || USE_ACCEL_SENSOR
+#ifdef USE_10DOF_SENSOR 
+
 #include <Wire.h>
+#include <Adafruit_BMP085_U.h>
+#include <Adafruit_L3GD20_U.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_LSM303_U.h>
-#endif
+#include <Adafruit_10DOF.h>
 
-#ifdef USE_ACCEL_SENSOR
-Adafruit_LSM303_Accel_Unified accel = Adafruit_LSM303_Accel_Unified(54321);
-#endif
+/* Assign a unique ID to the sensors */
+Adafruit_10DOF                dof   = Adafruit_10DOF();
+Adafruit_LSM303_Accel_Unified accel = Adafruit_LSM303_Accel_Unified(30301);
+Adafruit_LSM303_Mag_Unified   mag   = Adafruit_LSM303_Mag_Unified(30302);
+Adafruit_BMP085_Unified       bmp   = Adafruit_BMP085_Unified(18001);
 
-#ifdef USE_MAG_SENSOR
-/* Assign a unique ID to this sensor at the same time */
-Adafruit_LSM303_Mag_Unified mag = Adafruit_LSM303_Mag_Unified(12345);
 #endif
 
 #define chipSelect 10
@@ -103,35 +104,42 @@ void setup()
 //  logfile.println(F("by Mikal Hart"));
   logfile.println();
 
-  #ifdef USE_MAG_SENSOR
+  #ifdef USE_10DOF_SENSOR
   /* Initialise the sensor */
   if(!mag.begin())
   {
     /* There was a problem detecting the LSM303 ... check your connections */
-    serial_and_log_println(F("Ooops, no LSM303 detected ... Check your wiring!"));
+    serial_and_log_println(F("no LSM303 detected"));
     while(1);
   }
-  #endif
 
-  #ifdef USE_ACCEL_SENSOR
   /* Initialise the sensor */
   if(!accel.begin())
   {
     /* There was a problem detecting the ADXL345 ... check your connections */
-    serial_and_log_println(F("Ooops, no LSM303 detected ... Check your wiring!"));
+    serial_and_log_println(F("no LSM303 detected"));
     while(1);
   }
+
+  if(!bmp.begin())
+  {
+    /* There was a problem detecting the BMP180 ... check your connections */
+    Serial.println(F("no BMP180 detected"));
+    while(1);
+  }
+
   #endif
 
   displaySensorDetails();
   
-  serial_and_log_println(F("Sats HDOP Latitude  Longitude  Fix  Date       Time     Date Alt    Course Speed Card  mag   accel pressure temp go here              "));
-  serial_and_log_println(F("          (deg)     (deg)      Age                      Age  (m)    --- from GPS ----  x y z x y z                                   "));
-  serial_and_log_println(F("-------------------------------------------------------------------------------------------------------------------------------------"));
+  serial_and_log_println(F("Sats HDOP Latitude  Longitude  Fix  Date       Time     Date Alt    Course Speed Card  heading  pitch    roll    accel                 pressure temp  "));
+  serial_and_log_println(F("          (deg)     (deg)      Age                      Age  (m)    --- from GPS ----    deg     deg     deg      x        y     z                 C  "));
+  serial_and_log_println(F("------------------------------------------------------------------------------------------------------------------------------------------------------"));
 
   logfile.close();
   ss.begin(9600);
 }
+
 void openLogfile()
 {
     logfile = SD.open(filename, FILE_WRITE);
@@ -148,11 +156,40 @@ void loop()
   unsigned long age, date, time, chars = 0;
   unsigned short sentences = 0, failed = 0;
 //  static const double LONDON_LAT = 51.508131, LONDON_LON = -0.128002;
+  float pitch, roll, heading, temperature;
 
-  sensors_event_t mag_event; 
+  sensors_event_t accel_event;
+  sensors_event_t mag_event;
+  sensors_event_t bmp_event;
+  sensors_vec_t   orientation;
+
   mag.getEvent(&mag_event);
-  sensors_event_t accel_event; 
   accel.getEvent(&accel_event);
+  if (!dof.fusionGetOrientation(&accel_event, &mag_event, &orientation))
+  {
+    orientation.heading = -1.0;
+    orientation.roll = -1.0;
+    orientation.pitch = -1.0;
+  }
+  
+  
+  /* Calculate the altitude using the barometric pressure sensor */
+  bmp.getEvent(&bmp_event);
+  if (bmp_event.pressure)
+  {
+    /* Get ambient temperature in C */
+    bmp.getTemperature(&temperature);
+//    /* Convert atmospheric pressure, SLP and temp to altitude    */
+//    Serial.print(F("Alt: "));
+//    Serial.print(bmp.pressureToAltitude(seaLevelPressure,
+//                                        bmp_event.pressure,
+//                                        temperature)); 
+//    Serial.print(F(" m; "));
+//    /* Display the temperature */
+//    Serial.print(F("Temp: "));
+//    Serial.print(temperature);
+//    Serial.print(F(" C"));
+  }
 
   openLogfile();  
 
@@ -171,12 +208,14 @@ void loop()
 //  print_float(flat == TinyGPS::GPS_INVALID_F_ANGLE ? TinyGPS::GPS_INVALID_F_ANGLE : TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
 //  print_str(flat == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON)), 6);
 
-   print_float(mag_event.magnetic.x,-1,7,3);
-   print_float(mag_event.magnetic.y,-1,7,3);
-   print_float(mag_event.magnetic.z,-1,7,3);
+   print_float(orientation.heading,-1,7,3);
+   print_float(orientation.pitch,-1,7,3);
+   print_float(orientation.roll,-1,7,3);
+
    print_float(accel_event.acceleration.x,-1,7,3);
    print_float(accel_event.acceleration.y,-1,7,3);
    print_float(accel_event.acceleration.z,-1,7,3);
+   
 
 #ifndef _GPS_NO_STATS
   gps.stats(&chars, &sentences, &failed);
@@ -297,19 +336,17 @@ void error(uint8_t errno) {
 
 void displaySensorDetails(void)
 {
-#ifdef USE_ACCEL_SENSOR
+#ifdef USE_10DOF_SENSOR
   sensor_t accel_sensor;
   accel.getSensor(&accel_sensor);
-#endif  
 
-#ifdef USE_MAG_SENSOR
   sensor_t mag_sensor;
   mag.getSensor(&mag_sensor);
 #endif
 
 //SERIAL_DEBUGGING #if SERIAL_DEBUGGING > 3
   Serial.println(F("------------------------------------"));
-#ifdef USE_ACCEL_SENSOR
+#ifdef USE_10DOF_SENSOR
   serial_and_log_print  (F("Accel Sensor:       ")); serial_and_log_println(accel_sensor.name);
   serial_and_log_print  (F("Accel Driver Ver:   ")); serial_and_log_println(accel_sensor.version);
   serial_and_log_print  (F("Accel Unique ID:    ")); serial_and_log_println(accel_sensor.sensor_id);
@@ -317,7 +354,7 @@ void displaySensorDetails(void)
   serial_and_log_print  (F("Accel Min Value:    ")); serial_and_log_print(accel_sensor.min_value); serial_and_log_println(" m/s^2");
   serial_and_log_print  (F("Accel Resolution:   ")); serial_and_log_print(accel_sensor.resolution); serial_and_log_println(" m/s^2");  
 #endif  
-#ifdef USE_MAG_SENSOR
+#ifdef USE_10DOF_SENSOR
   serial_and_log_print  (F("Mag   Sensor:       ")); serial_and_log_println(mag_sensor.name);
   serial_and_log_print  (F("Mag   Driver Ver:   ")); serial_and_log_println(mag_sensor.version);
   serial_and_log_print  (F("Mag   Unique ID:    ")); serial_and_log_println(mag_sensor.sensor_id);
