@@ -1,17 +1,12 @@
 #define noF  F
 
-// #define SOFTWARE_SERIAL
-#ifdef SOFTWARE_SERIAL
-  #include <SoftwareSerial.h>
-  #define SERIAL_OUTPUT
-#else
-//  #include <HardwareSerial.h>
-#endif
 
 #include <SPI.h>
 
 //#define DIRECT_SD
-#define SD_LOGGER
+#ifndef DIRECT_SD
+  #define SD_LOGGER
+#endif  
 
 #ifdef DIRECT_SD
   #include <SD.h>
@@ -54,12 +49,9 @@
 #define ledPin 13
 
 TinyGPS gps;
-#ifdef SOFTWARE_SERIAL
-  SoftwareSerial gpsSerial(8, 7);
-#else
+
 //  HardwareSerial &gpsSerial = Serial;
   #define gpsSerial  Serial1
-#endif
 
 char filename[15];
 
@@ -88,13 +80,10 @@ void serial_and_log_println(float &f, int& i);
 void setup()
 {
   Serial.begin(57600);
-  #ifdef SOFTWARE_SERIAL
-    Serial.print(noF("Using TinyGPS library v. ")); Serial.println(TinyGPS::library_version());
-  #endif    
-  #ifdef SERIAL_OUTPUT
-    Serial.println(noF("by Mikal Hart"));
-    Serial.println();
-  #endif
+  Serial.print(noF("Using TinyGPS library v. ")); Serial.println(TinyGPS::library_version());
+
+  Serial.println(noF("by Mikal Hart"));
+  Serial.println();
 
   pinMode(ledPin, OUTPUT);
 
@@ -124,12 +113,14 @@ void setup()
     openLogfile();
   #endif
 
-  #ifdef SERIAL_OUTPUT
     Serial.print(noF("Writing to ")); 
     Serial.println(filename);
-  #endif
 
    logfile.print(noF("Using TinyGPS library v. ")); logfile.println(TinyGPS::library_version());
+#ifdef SD_LOGGER
+ smartdelay(15);
+ logfile.begin(9600);
+#endif   
 //  logfile.println(noF("by Mikal Hart"));
   logfile.println();
 
@@ -166,7 +157,8 @@ void setup()
     displaySensorDetails();
   #endif  
   
-  serial_and_log_println(noF("Sats HDOP Latitude  Longitude  Fix  Date       Time     Date Alt    Course Speed Card  heading  pitch    roll    accel                 pressure temp  "));
+//  serial_and_log_println(noF("Sats HDOP Latitude  Longitude  Fix  Date       Time     Date Alt    Course Speed Card  heading  pitch    roll    accel                 pressure temp  "));
+  serial_and_log_println(noF("Sats,HDOP,Latitude,Longitude,Fix,Date,Time,Alt,Course,Speed,Card,heading,pitch,roll,accel_x,accel_y,accel_z,pressure,temp"));
 //  serial_and_log_println(noF("          (deg)     (deg)      Age                      Age  (m)    --- from GPS ----    deg     deg     deg      x        y     z                 C  "));
 //  serial_and_log_println(noF("------------------------------------------------------------------------------------------------------------------------------------------------------"));
 
@@ -194,6 +186,7 @@ void loop()
 {
   float flat, flon;
   unsigned long age, date, time, chars = 0;
+
   #ifndef _GPS_NO_STATS  
     unsigned short sentences = 0, failed = 0;
   #endif  
@@ -250,33 +243,52 @@ void loop()
   #endif  
 
   print_int(gps.satellites(), TinyGPS::GPS_INVALID_SATELLITES, 5);
+  print_str(",",1);
   print_int(gps.hdop(), TinyGPS::GPS_INVALID_HDOP, 5);
+  print_str(",",1);
   gps.f_get_position(&flat, &flon, &age);
+  print_str(",",1);
   print_float(flat, TinyGPS::GPS_INVALID_F_ANGLE, 10, 6);
+  print_str(",",1);
   print_float(flon, TinyGPS::GPS_INVALID_F_ANGLE, 11, 6);
+  print_str(",",1);
   print_int(age, TinyGPS::GPS_INVALID_AGE, 5);
+  print_str(",",1);
   print_date(gps);
+  print_str(",",1);
   print_float(gps.f_altitude(), TinyGPS::GPS_INVALID_F_ALTITUDE, 7, 2);
+  print_str(",",1);
   print_float(gps.f_course(), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
+  print_str(",",1);
   print_float(gps.f_speed_kmph(), TinyGPS::GPS_INVALID_F_SPEED, 6, 2);
+  print_str(",",1);
   print_str(gps.f_course() == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(gps.f_course()), 6);
+  print_str(",",1);
 //  print_int(flat == TinyGPS::GPS_INVALID_F_ANGLE ? 0xFFFFFFFF : (unsigned long)TinyGPS::distance_between(flat, flon, LONDON_LAT, LONDON_LON) / 1000, 0xFFFFFFFF, 9);
 //  print_float(flat == TinyGPS::GPS_INVALID_F_ANGLE ? TinyGPS::GPS_INVALID_F_ANGLE : TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON), TinyGPS::GPS_INVALID_F_ANGLE, 7, 2);
 //  print_str(flat == TinyGPS::GPS_INVALID_F_ANGLE ? "*** " : TinyGPS::cardinal(TinyGPS::course_to(flat, flon, LONDON_LAT, LONDON_LON)), 6);
 
    print_float(orientation.heading,-1,9,3);
+  print_str(",",1);
    print_float(orientation.pitch,-1,9,3);
+  print_str(",",1);
    print_float(orientation.roll,-1,9,3);
+  print_str(",",1);
 
    print_float(accel_event.acceleration.x,-1,9,3);
+  print_str(",",1);
    print_float(accel_event.acceleration.y,-1,9,3);
+  print_str(",",1);
    print_float(accel_event.acceleration.z,-1,9,3);
+  print_str(",",1);
    
 
   #ifndef _GPS_NO_STATS
     gps.stats(&chars, &sentences, &failed);
     print_int(chars, 0xFFFFFFFF, 6);
+  print_str(",",1);
     print_int(sentences, 0xFFFFFFFF, 10);
+  print_str(",",1);
     print_int(failed, 0xFFFFFFFF, 9);
   #endif  
 
@@ -285,7 +297,10 @@ void loop()
   #ifdef DIRECT_SD
   //  logfile.flush();
     logfile.close();
+  #else
+    logfile.flush();
   #endif
+  
   smartdelay(LOOP_DELAY);
 }
 
@@ -349,13 +364,13 @@ static void print_date(TinyGPS &gps)
   gps.crack_datetime(&year, &month, &day, &hour, &minute, &second, &hundredths, &age);
   if ( day == 0)
   {
-    serial_and_log_print(noF("********** ******** "));
+    serial_and_log_print(noF("**********,******** "));
   }
   else
   {
     char sz[32];
 
-    sprintf(sz, "%02d/%02d/%04d %02d:%02d:%02d ",
+    sprintf(sz, "%02d/%02d/%04d,%02d:%02d:%02d ",
         month, day, year, hour, minute, second);
     serial_and_log_print(sz);
   }
@@ -436,65 +451,74 @@ void error(uint8_t errno) {
 
 void serial_and_log_print(char c)
 {
-  #ifdef SERIAL_OUTPUT
-    Serial.print(c);
-  #endif
+  Serial.print(c);
   logfile.print(c);
+#ifdef SD_LOGGER
+ smartdelay(15);
+#endif   
+  
 }
 
 void serial_and_log_print(char* s)
 {
-  #ifdef SERIAL_OUTPUT
-    Serial.print(s);
-  #endif
+  Serial.print(s);
   logfile.print(s);
+#ifdef SD_LOGGER
+ smartdelay(15);
+#endif   
 }  
 void serial_and_log_println(char c)
 {
-  #ifdef SERIAL_OUTPUT
-    Serial.println(c);
-  #endif
+  Serial.println(c);
   logfile.println(c);
+#ifdef SD_LOGGER
+ smartdelay(15);
+#endif   
 }
 
 void serial_and_log_println(char* s)
 {
-  #ifdef SERIAL_OUTPUT
-    Serial.println(s);
-  #endif
+  Serial.println(s);
   logfile.println(s);
+#ifdef SD_LOGGER
+ smartdelay(15);
+#endif   
 }
 
 void serial_and_log_print(const __FlashStringHelper* s)
 {
-  #ifdef SERIAL_OUTPUT
-    Serial.print(s);
-  #endif
+  Serial.print(s);
   logfile.print(s);
+#ifdef SD_LOGGER
+ smartdelay(15);
+#endif   
 }  
 
 void serial_and_log_println(const __FlashStringHelper* s)
 {
-  #ifdef SERIAL_OUTPUT
-    Serial.println(s);
-  #endif
+  Serial.println(s);
   logfile.println(s);
+#ifdef SD_LOGGER
+ smartdelay(15);
+#endif   
 }
 
 void serial_and_log_print(float &f, int& i)
 {
-  #ifdef SERIAL_OUTPUT
-    Serial.print(f,i);
-  #endif
+  Serial.print(f,i);
   logfile.print(f,i);
+#ifdef SD_LOGGER
+ smartdelay(15);
+#endif   
 }
 
 void serial_and_log_println(float &f, int& i)
 {
-  #ifdef SERIAL_OUTPUT
-    Serial.print(f,i);
-  #endif
+  Serial.print(f,i);
   logfile.print(f,i);
+#ifdef SD_LOGGER
+ smartdelay(15);
+#endif   
 }
 
 
