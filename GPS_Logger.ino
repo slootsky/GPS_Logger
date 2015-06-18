@@ -419,8 +419,6 @@ void take_readings()
       bmp.getTemperature(&g_sensor_data.temperature);
     }
   #endif
-
-  
 }
 
 void write_csv_header()
@@ -428,51 +426,62 @@ void write_csv_header()
 #ifdef RUN_FLAG_OUTPUT
   print_str("RunFlags,");
 #endif  
+
 #ifdef EXPLAIN_OUTPUT
   print_str("course_hdr,");
 #endif
+
   print_str("Course");
   print_str(",Speed");
   print_str(",HDOP,Satellites");
   print_str(",Latitude");
-  print_str(",dt_age,Date,Time");
+  print_str(",dt_age,Date_Time");
+
 #ifdef EXPLAIN_OUTPUT
   print_str(",alt_hdr");
 #endif
+
   print_str(",Altitude");
+
 #ifdef EXPLAIN_OUTPUT
   print_str(",accel_hdr",10);
 #endif  
+
   print_str(",accel_x,accel_y,accel_z");
   print_str(",Longitude");
+
 #ifdef EXPLAIN_OUTPUT
   print_str(",mag_hdr",10);
 #endif  
+
   print_str(",mag_x,mag_y,mag_z");
+
 #ifdef EXPLAIN_OUTPUT
   print_str(",heading_pitch_roll_hdr",10);
 #endif  
+
   print_str(",heading,pitch,roll");
+
 #ifdef EXPLAIN_OUTPUT
   print_str(",gyro_hdr",10);
 #endif  
+
   print_str(",gyro_x,gyro_y,gyro_z");
   print_str(",bmp_pressure");
   print_str(",pressure_by_altitude,Temperature");
+
 #ifdef EXPLAIN_OUTPUT
   print_str(",fix_time_hdr");
 #endif  
+
   print_str(",fix_age");
-  
-
-
   print_str(",last_fix_position,last_fix_time");
 
 #ifndef _GPS_NO_STATS
   print_str(",stats_chars,stats_sentences,stats_failed");
 #endif
+
   print_str("\n");
-  
 }
 
 void log_output_forced(bool take_reading = true)
@@ -689,8 +698,8 @@ void setup() {
 #endif
     error(2);
   }
-  strcpy(filename, "GPSLOG00.TXT");
-  for (uint8_t i = 0; i < 100; i++) {
+  strcpy(filename, "GPSLOG0.TXT");
+  for (uint8_t i = 0; i < 1000; i++) {
     filename[6] = '0' + i / 10;
     filename[7] = '0' + i % 10;
     // create if does not exist, do not open existing, write, sync after write
@@ -706,13 +715,13 @@ void setup() {
 #endif
 
 
-  logfile.print("Using TinyGPS library v. "); logfile.println(TinyGPS::library_version());
+//  logfile.print("Using TinyGPS library v. "); logfile.println(TinyGPS::library_version());
 #ifdef SD_LOGGER
   smartdelay(15);
   logfile.begin(9600);
 #endif
   //  logfile.println("by Mikal Hart");
-  logfile.println();
+  // logfile.println();
 
 #ifdef USE_10DOF_SENSOR
   /* Initialise the sensor */
@@ -758,7 +767,7 @@ void setup() {
   displaySensorDetails();
 #endif
 
-  serial_and_log_println("");
+  //serial_and_log_println("");
   //  serial_and_log_println("          (deg)     (deg)      Age                      Age  (m)    --- from GPS ----    deg     deg     deg      x        y     z                 C  ");
   //  serial_and_log_println("------------------------------------------------------------------------------------------------------------------------------------------------------");
 

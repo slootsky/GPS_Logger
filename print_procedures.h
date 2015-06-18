@@ -23,6 +23,7 @@ void serial_and_log_print(char* s)
   read_gps_buffer();
 #endif   
 }  
+
 void serial_and_log_println(char c)
 {
   Serial.println(c);
@@ -96,7 +97,7 @@ static void print_float(float val, float invalid, int len, int prec)
   if (val == invalid)
   {
     while (len-- > 1)
-      serial_and_log_print('*');
+      serial_and_log_print(' ');
     serial_and_log_print(' ');
   }
   else
@@ -116,7 +117,7 @@ static void print_int(int val, int invalid, int len)
 {
   char sz[len<8?8:len];
   if (val == invalid)
-    strcpy(sz, "*******");
+    strcpy(sz, "       ");
   else
     sprintf(sz, "%d", val);
   sz[len] = 0;
@@ -135,7 +136,7 @@ static void print_ulong(unsigned long val, unsigned long invalid, int len)
   if (val == invalid)
   {
     for (int i = 0 ; i < len ; i++ )
-      sz[i]='*';
+      sz[i]=' ';
   }    
   else
   {
@@ -161,13 +162,13 @@ static void print_date(TinyGPS &gps)
   print_int(age, TinyGPS::GPS_INVALID_AGE, 5);
   if ( day == 0)
   {
-    serial_and_log_print(",**********,********");
+    serial_and_log_print(",                   ");
   }
   else
   {
     char sz[32];
 
-    sprintf(sz, ",%02d/%02d/%04d,%02d:%02d:%02d",
+    sprintf(sz, ",%02d/%02d/%04d %02d:%02d:%02d",
         month, day, year, hour, minute, second);
     serial_and_log_print(sz);
   }
